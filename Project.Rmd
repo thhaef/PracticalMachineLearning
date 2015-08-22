@@ -1,0 +1,93 @@
+---
+title: "Course Project"
+author: "Thomas H."
+date: "Friday, August 21, 2015"
+output: html_document
+---
+
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).   
+
+
+
+##Data
+The training data for this project are available here:   
+'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'   
+The test data are available here:    
+'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'    
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.   
+We load the data: 
+```{r Loading, cache=TRUE}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train <- read.csv(trainUrl,na.strings=c("NA",""), header=TRUE)
+test <- read.csv(testUrl,na.strings=c("NA",""), header=TRUE)
+```
+If we look at the data, we have 160 columns. The last one ('classe') is the outcome. The first seven rows are useless to predict the classe, so we chop it. Further, we delete all columns that are entirely 'NA' in the 'test' data.
+```{r cleaning Data, cache=TRUE}
+test <- test[, -(1:7)]
+train <- train[, -(1:7)]
+test2 <- test[, colSums(is.na(test)) != nrow(test)]
+train2 <- train[ , which(names(train) %in% names(test2))]
+train2$classe <- train$classe
+```
+To make predictions about the out-of-sample error rate, we split our data into a training and a testing set, using the createDataPartition from the 'caret' package.   
+```{r trainingset, cache=TRUE, warning=FALSE}
+library(caret)
+inTrain <- createDataPartition(y=train2$classe, p=0.75, list=FALSE)
+training <- train2[inTrain,]
+testing <- train2[-inTrain,]
+```
+We will test for highly correlated predictors and get rid of them as well. We print the number of predictors to compare.   
+```{r correlation, cache=TRUE}
+outcome <- as.factor(training[,ncol(training)])
+training2 <- training[,-ncol(training)]
+ncol(training2)
+corr <- cor(training2)
+highCorr <- findCorrelation(corr, 0.90)
+training <- training[, -highCorr]
+testing <- testing[, -highCorr]
+ncol(training)
+training2 <- training[,-ncol(training)]
+```
+#Machine Learning: Random Forrests
+We will apply an random forrest algorithm to fit a predictive model on our training data. 
+To not overfit the dataset we chose just the most important predictors and used cross-validation. We will show a plot of the effect of the number of predictors on the accuracy of the model.   
+```{r predictors, cache=TRUE, warning=FALSE}
+control <- rfeControl(functions=rfFuncs, method="cv", number=8)
+results <- rfe(training2, outcome, sizes=c(1:20), rfeControl=control)
+plot(results, type=c("g", "o"))
+```
+   
+Anyhow, chosen the 10 most important predictors for our model, led to just 19 correct predictions out of the 20 cases in the test data.   
+   
+##Final Model
+To achieve all correct predictions, we fit a model including all predictors (after the earlier steps of cleaning the data), with a 4-fold cross validation.   
+```{r result, cache=TRUE}
+modFitB1 <- randomForest(classe ~. , data=training)
+modFit <- train(training$classe ~ ., method="rf",
+                trControl=trainControl(method = "cv", number = 4),
+                data=training2)
+predictions <- predict(modFit, newdata=testing)
+print(confusionMatrix(predictions, testing$classe), digits=4)
+```
+The estimated accuracy of this model is
+```{r accuracy, cache=TRUE}
+confusionMatrix(predictions, testing$classe)$overall[1]
+```
+And the estimated out-of-sample error is
+```{r oose, cache=TRUE}
+as.numeric(1-confusionMatrix(predictions, testing$classe)$overall[1])
+```
+#Test Predictions
+With this model the predictions for the 20 test cases are
+```{r solution, cache=TRUE}
+testpredictions <- predict(modFit, test)
+testpredictions
+```
+
+
+
+
+
+
